@@ -1,0 +1,89 @@
+SELECT 
+
+CASE WHEN company.t_comp = '1510' 
+THEN '1511' 
+ELSE company.t_comp END AS [Enterprise Unit], 
+
+item.t_cwar AS Warehouse, 
+
+company.t_dsca AS [Warehouse Name], 
+
+CASE WHEN company.t_typw = '13' 
+THEN 'Customer Owned' 
+WHEN company.t_typw 
+IN ('1', '2') 
+THEN 'Luminator Owned' 
+ELSE '' END AS [Warehouse Type], 
+
+
+             CASE WHEN company.t_cdf_own = '2' THEN 'Operations' 
+             WHEN company.t_cdf_own = '3' THEN 'Sales' 
+             WHEN company.t_cdf_own = '4' THEN 'Service' 
+             WHEN company.t_cdf_own = '5' THEN 'Project Mgmt' 
+             ELSE '--' END AS Owner, 
+
+             person.t_nama AS [Responsible Person], 
+
+             LTRIM(item.t_item) AS ItemID, 
+             LTRIM(itemdes.t_dsca) AS [Item Description], 
+             LTRIM(itemdes.t_csig) AS Signal, 
+             ISNULL(infonow.t_dsca, N'Series') AS [Signal Description], 
+             itemdes.t_citg AS [Item Group], 
+             itemdes.t_cpln AS [Product Line], 
+             infoitem.t_dsca AS [Product Line Desc.], 
+
+             ROUND(cost.t_ecpr_1, 2) AS [Standard Cost], 
+             cost.t_ccur AS [Std Cost Currency], 
+             
+             ROUND(ISNULL(cost.t_ecpr_1 *
+                 (SELECT TOP (1) CASE WHEN erplndb.dbo.ttcmcs0081000.t_rate < 1 THEN erplndb.dbo.ttcmcs0081000.t_rate / erplndb.dbo.ttcmcs0081000.t_ratf ELSE erplndb.dbo.ttcmcs0081000.t_rate * erplndb.dbo.ttcmcs0081000.t_ratf END AS Expr1
+                 FROM    erplndb.dbo.ttcmcs0081000
+                 WHERE (t_bcur = 'EUR') AND (t_ccur = cost.t_ccur)
+                 ORDER BY t_stdt DESC), cost.t_ecpr_1), 4) AS [Std Cost EUR], 
+                 
+                 itemdes.t_cuni AS [Inventory Unit], 
+                 item.t_qhnd AS [On Hand Q-ty], 
+                 item.t_qord AS [On Order Q-ty], 
+                 item.t_qall AS [Allocated Q-ty], 
+                 
+                 ISNULL ((SELECT SUM(t_qana) AS Expr1
+                  FROM    erplndb.dbo.tcprrp0101000
+                  WHERE (t_cwar = item.t_cwar) AND (t_plnc = '001') AND (SUBSTRING(t_plni, 13, 8) = LTRIM(item.t_item))
+                  GROUP BY t_plni), N'0') AS [Planned Demand], 
+                  
+                  ROUND(item.t_qhnd * ROUND(ISNULL(cost.t_ecpr_1 *
+                 (SELECT TOP (1) 
+                 CASE WHEN erplndb.dbo.ttcmcs0081000.t_rate < 1 
+                 THEN erplndb.dbo.ttcmcs0081000.t_rate / erplndb.dbo.ttcmcs0081000.t_ratf 
+                 ELSE erplndb.dbo.ttcmcs0081000.t_rate * erplndb.dbo.ttcmcs0081000.t_ratf END AS Expr1
+                 FROM    erplndb.dbo.ttcmcs0081000
+                 WHERE (t_bcur = 'EUR') AND (t_ccur = cost.t_ccur)
+                 ORDER BY t_stdt DESC), cost.t_ecpr_1), 4), 4) AS [Stock Value in Std Cost EUR], 
+                 
+                 ISNULL ((SELECT FORMAT(MAX(t_trdt), 'yyyy-MM-dd') AS Expr1
+                  FROM    erplndb.dbo.twhinr1101000 AS dateitem
+                  WHERE (t_item = item.t_item) AND (t_cwar = item.t_cwar) AND (t_koor = '1') AND (t_kost = '5')
+                  GROUP BY t_item), N'') AS [Last consumption date], 
+                  
+                  ISNULL((SELECT FORMAT(MAX(dateitem.t_trdt), 'yyyy-MM-dd') AS Expr1
+                  FROM    erplndb.dbo.twhinr1101000 AS dateitem INNER JOIN
+                erplndb.dbo.twhinh2001000 ON erplndb.dbo.twhinh2001000.t_orno = dateitem.t_orno 
+                AND SUBSTRING(erplndb.dbo.twhinh2001000.t_stco, 1, 1) NOT IN (SUBSTRING(item.t_cwar, 1, 1))
+                  WHERE (dateitem.t_item = item.t_item) AND (dateitem.t_cwar = item.t_cwar) AND (dateitem.t_koor IN ('3', '60', '36')) AND (dateitem.t_kost = '5')
+                  GROUP BY dateitem.t_item), N'') AS [Last sales date], 
+                  
+                  ISNULL((SELECT FORMAT(MAX(dateitem.t_trdt), 'yyyy-MM-dd') AS Expr1
+                  FROM    erplndb.dbo.twhinr1101000 AS dateitem INNER JOIN
+                    erplndb.dbo.twhinh2001000 ON erplndb.dbo.twhinh2001000.t_orno = dateitem.t_orno AND SUBSTRING(erplndb.dbo.twhinh2001000.t_sfco, 1, 1) NOT IN (SUBSTRING(item.t_cwar, 1, 1))
+                  WHERE (dateitem.t_item = item.t_item) AND (dateitem.t_cwar = item.t_cwar) AND (dateitem.t_koor IN ('2', '60', '36')) AND (dateitem.t_kost = '3')
+                  GROUP BY dateitem.t_item), N'') AS [Last receipt date], 
+                  
+                  FORMAT(item.t_ltdt, 'yyyy-MM-dd') AS [Last Movement Date ANY]
+FROM   erplndb.dbo.twhwmd2151000 AS item INNER JOIN
+             erplndb.dbo.ttcmcs0031000 AS company ON item.t_cwar = company.t_cwar INNER JOIN
+             erplndb.dbo.ttccom0011000 AS person ON person.t_emno = company.t_cdf_wrpr INNER JOIN
+             erplndb.dbo.ttcibd0011000 AS itemdes ON item.t_item = itemdes.t_item LEFT OUTER JOIN
+             erplndb.dbo.ttcmcs0611000 AS infoitem ON infoitem.t_cpln = itemdes.t_cpln LEFT OUTER JOIN
+             erplndb.dbo.ttcmcs0181000 AS infonow ON itemdes.t_csig = infonow.t_csig LEFT OUTER JOIN
+             erplndb.dbo.tticpr0071000 AS cost ON cost.t_eunt = CASE WHEN company.t_comp = '1510' THEN '1511' ELSE company.t_comp END AND item.t_item = cost.t_item
+WHERE (item.t_qhnd > '0')
