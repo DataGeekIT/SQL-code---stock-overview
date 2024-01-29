@@ -1,4 +1,4 @@
-# ERP-Data-Queries-Repository
+# ERP-Data-Queries-Repository - ON STOCK INVENTORY - SUPPLY CHAIN
 
 This repository contains SQL queries for retrieving data from an ERP system, specifically related to transaction records. 
 The queries extract information such as item details, warehouse transactions, order-related data, transaction types, and business partner information. 
