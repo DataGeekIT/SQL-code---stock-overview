@@ -1,4 +1,4 @@
-# ERP-Data-Queries-Repository - INVENTORY - SUPPLY CHAIN
+# Queries-Repository - INVENTORY - SUPPLY CHAIN
 
 This repository contains SQL queries for retrieving data from an ERP system, specifically related to transaction records. 
 The queries extract information such as item details, warehouse transactions, order-related data, transaction types, and business partner information. 
@@ -15,8 +15,8 @@ It utilizes several SQL commands to extract specific information, as follows:
 
 - Table Joins: The SQL query performs table joins (LEFT JOIN) to link data from different tables in the ERP database, allowing for the retrieval of related information.
 
-- Filtering: The `WHERE` clause is used to filter records based on specific conditions. For example, it filters records where 't_cpac' is 'tc,' 't_cdom' is 'koor,' and 't_clan' is '2' for the 'Type of Order Desc' subquery.
-
+- Filtering: The `WHERE` clause is used to filter records based on specific conditions.
+- 
 - Aggregation: The query uses the `TOP(1)` clause in subqueries to retrieve only the top (first) matching record, ensuring that a single result is returned for each subquery.
 
 
