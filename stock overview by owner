@@ -1,3 +1,5 @@
+Please note that the following information is purely fictional and does not contain any confidential data.
+
 SELECT 
 
 CASE WHEN company.t_company= '1234' 
