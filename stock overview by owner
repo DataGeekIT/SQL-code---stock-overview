@@ -1,91 +1,92 @@
 Please note that the following information is purely fictional and does not contain any confidential data.
 
-SELECT 
+--nowy stock 18.09.2024 - usprawione tabele, szybsze przeliczanie
 
-CASE WHEN company.t_company= '1234' 
-THEN '1235' 
-ELSE company.t_company END AS [Enterprise Unit], 
+WITH ExchangeRates AS
+    (SELECT t_ccur, 
+            CASE WHEN t_rate < 1 THEN t_rate / t_ratf ELSE t_rate * t_ratf END AS rate, 
+            ROW_NUMBER() OVER (PARTITION BY t_ccur ORDER BY t_stdt DESC) AS rn
+     FROM erplndb.dbo.ttcmcs0081000
+     WHERE t_bcur = 'USD' AND t_rapr = '1' AND t_rtyp = 'PEG'),
 
-item.t_ware AS Warehouse, 
+PlannedDemand AS
+    (SELECT t_cwar, SUBSTRING(t_plni, 13, 8) AS ItemID, SUM(t_qana) AS Demand
+     FROM erplndb.dbo.tcprrp0101000
+     WHERE t_plnc = '001'
+     GROUP BY t_cwar, SUBSTRING(t_plni, 13, 8)),
 
-company.t_warename AS [Warehouse Name], 
+LastConsumptionDate AS
+    (SELECT t_item, t_cwar, MAX(t_trdt) AS LastConsumptionDate
+     FROM erplndb.dbo.twhinr1101000
+     WHERE t_koor = '1' AND t_kost = '5'
+     GROUP BY t_item, t_cwar),
 
-CASE WHEN company.t_typw = '13' 
-THEN 'Customer Owned' 
-WHEN company.t_typw 
-IN ('1', '2') 
-THEN 'xyz Owned' 
-ELSE '' END AS [Warehouse Type], 
+LastSalesDate AS
+    (SELECT dateitem.t_item, dateitem.t_cwar, MAX(dateitem.t_trdt) AS LastSalesDate
+     FROM erplndb.dbo.twhinr1101000 AS dateitem 
+     INNER JOIN erplndb.dbo.twhinh2001000 ON erplndb.dbo.twhinh2001000.t_orno = dateitem.t_orno
+     WHERE dateitem.t_koor IN ('3', '60', '36') AND dateitem.t_kost = '5'
+     GROUP BY dateitem.t_item, dateitem.t_cwar),
 
+LastReceiptDate AS
+    (SELECT dateitem.t_item, dateitem.t_cwar, MAX(dateitem.t_trdt) AS LastReceiptDate
+     FROM erplndb.dbo.twhinr1101000 AS dateitem 
+     INNER JOIN erplndb.dbo.twhinh2001000 ON erplndb.dbo.twhinh2001000.t_orno = dateitem.t_orno
+     WHERE dateitem.t_koor IN ('2', '60', '36') AND dateitem.t_kost = '3'
+     GROUP BY dateitem.t_item, dateitem.t_cwar)
 
-             CASE WHEN company.t_own = '0' THEN 'Operations' 
-             WHEN company.t_own = '1' THEN 'Sales' 
-             WHEN company.t_own = '2' THEN 'Service' 
-             WHEN company.t_own = '3' THEN 'Project Mgmt' 
-             ELSE '--' END AS Owner, 
-
-             person.t_nama AS [Responsible Person], 
-
-             LTRIM(item.t_productnumberID) AS [ItemID], 
-             LTRIM(itemdes.t_description) AS [Item Description], 
-             LTRIM(itemdes.t_csig) AS Signal, 
-             ISNULL(infonow.t_description, N'Series') AS [Signal Description], 
-             itemdes.t_productnumbergroup AS [Item Group], 
-             itemdes.t_cpln AS [Product Line], 
-             infoitem.t_description AS [Product Line Desc.], 
-
-             ROUND(cost.t_standardcost, 2) AS [Standard Cost], 
-             cost.t_currency AS [Std Cost Currency], 
-             
-             ROUND(ISNULL(cost.t_standardcost *
-                 (SELECT TOP (1) CASE WHEN SQL.dbo.tabela7.t_rate < 1 THEN SQL.dbo.tabela7.t_rate / SQL.dbo.tabela7.t_ratf ELSE SQL.dbo.tabela7.t_rate * SQL.dbo.tabela7.t_ratf END AS Expr1
-                 FROM    SQL.dbo.tabela7
-                 WHERE (t_bcur = 'EUR') AND (t_currency = cost.t_currency)
-                 ORDER BY t_stdt DESC), cost.t_standardcost), 4) AS [Std Cost EUR], 
-                 
-                 itemdes.t_unit AS [Inventory Unit], 
-                 item.t_qtyinhand AS [On Hand Q-ty], 
-                 item.t_qtyonorder AS [On Order Q-ty], 
-                 item.t_allocatedqty AS [Allocated Q-ty], 
-                 
-                 ISNULL ((SELECT SUM(t_qana) AS Expr1
-                  FROM    SQL.dbo.tabela8
-                  WHERE (t_consumption = item.t_consumption) AND (t_plnc = '001') AND (SUBSTRING(t_plni, 13, 8) = LTRIM(item.t_productnumber))
-                  GROUP BY t_plni), N'0') AS [Planned Demand], 
-                  
-                  ROUND(item.t_qtyinhand * ROUND(ISNULL(cost.t_standardcost *
-                 (SELECT TOP (1) 
-                 CASE WHEN SQL.dbo.tabela7.t_rate < 1 
-                 THEN SQL.dbo.tabela7.t_rate / SQL.dbo.tabela7.t_ratf 
-                 ELSE SQL.dbo.tabela7.t_rate * SQL.dbo.tabela7.t_ratf END AS Expr1
-                 FROM    SQL.dbo.tabela7
-                 WHERE (t_bcur = 'EUR') AND (t_currency = cost.t_currency)
-                 ORDER BY t_stdt DESC), cost.t_standardcost), 4), 4) AS [Stock Value in Std Cost EUR], 
-                 
-                 ISNULL ((SELECT FORMAT(MAX(t_trdt), 'yyyy-MM-dd') AS Expr1
-                  FROM    SQL.dbo.tabela9 AS dateitem
-                  WHERE (t_productnumber = item.t_productnumber) AND (t_consumption = item.t_consumption) AND (t_koor = '1') AND (t_kost = '5')
-                  GROUP BY t_productnumber), N'') AS [Last consumption date], 
-                  
-                  ISNULL((SELECT FORMAT(MAX(dateitem.t_trdt), 'yyyy-MM-dd') AS Expr1
-                  FROM    SQL.dbo.tabela9 AS dateitem INNER JOIN
-                SQL.dbo.tabela10 ON SQL.dbo.tabela10.t_orno = dateitem.t_orno 
-                AND SUBSTRING(SQL.dbo.tabela10.t_stco, 1, 1) NOT IN (SUBSTRING(item.t_consumption, 1, 1))
-                  WHERE (dateitem.t_productnumber = item.t_productnumber) AND (dateitem.t_consumption = item.t_consumption) AND (dateitem.t_koor IN ('3', '60', '36')) AND (dateitem.t_kost = '5')
-                  GROUP BY dateitem.t_productnumber), N'') AS [Last sales date], 
-                  
-                  ISNULL((SELECT FORMAT(MAX(dateitem.t_trdt), 'yyyy-MM-dd') AS Expr1
-                  FROM    SQL.dbo.tabela9 AS dateitem INNER JOIN
-                    SQL.dbo.tabela10 ON SQL.dbo.tabela10.t_orno = dateitem.t_orno AND SUBSTRING(SQL.dbo.tabela10.t_sfco, 1, 1) NOT IN (SUBSTRING(item.t_consumption, 1, 1))
-                  WHERE (dateitem.t_productnumber = item.t_productnumber) AND (dateitem.t_consumption = item.t_consumption) AND (dateitem.t_koor IN ('2', '60', '36')) AND (dateitem.t_kost = '3')
-                  GROUP BY dateitem.t_productnumber), N'') AS [Last receipt date], 
-                  
-                  FORMAT(item.t_ltdt, 'yyyy-MM-dd') AS [Last Movement Date ANY]
-FROM   SQL.dbo.twhwmd2151000 AS item INNER JOIN
-             SQL.dbo.tabela1 AS company ON item.t_consumption = company.t_consumption INNER JOIN
-             SQL.dbo.tabela2 AS person ON person.t_emno = company.t_cdf_wrpr INNER JOIN
-             SQL.dbo.tabela3 AS itemdes ON item.t_productnumber = itemdes.t_productnumber LEFT OUTER JOIN
-             SQL.dbo.tabela4 AS infoitem ON infoitem.t_cpln = itemdes.t_cpln LEFT OUTER JOIN
-             SQL.dbo.tabela5 AS infonow ON itemdes.t_csig = infonow.t_csig LEFT OUTER JOIN
-             SQL.dbo.tabela6 AS cost ON cost.t_eunt = CASE WHEN company.t_company = '1234' THEN '1235' ELSE company.t_company END AND item.t_productnumber = cost.t_productnumber
-WHERE (item.t_qtyinhand > '0')
+SELECT CASE WHEN company.t_comp = '1510' THEN '1511' ELSE company.t_comp END AS [Enterprise Unit], 
+       item.t_cwar AS Warehouse, 
+       company.t_dsca AS [Warehouse Name], 
+       CASE WHEN company.t_typw = '13' THEN 'Customer Owned' 
+            WHEN company.t_typw IN ('1', '2') THEN 'Luminator Owned' ELSE '' END AS [Warehouse Type], 
+       CASE WHEN company.t_cdf_own = '2' THEN 'Operations' 
+            WHEN company.t_cdf_own = '3' THEN 'Sales' 
+            WHEN company.t_cdf_own = '4' THEN 'Service' 
+            WHEN company.t_cdf_own = '5' THEN 'Project Mgmt' 
+            WHEN company.t_cdf_own = '6' THEN 'Quality' 
+            WHEN company.t_cdf_own = '7' THEN 'Consignment' ELSE '--' END AS Owner, 
+       person.t_nama AS [Responsible Person], 
+       LTRIM(item.t_item) AS ItemID, 
+       LTRIM(itemdes.t_dsca) AS [Item Description], 
+       CASE WHEN LTRIM(itemdes.t_csig) = '' THEN '140' ELSE LTRIM(itemdes.t_csig) END AS Signal, 
+       ISNULL(CASE WHEN infonow.t_dsca = 'Series' THEN 'Serial Production' ELSE infonow.t_dsca END, N'Serial Production') AS [Signal Description], 
+       itemdes.t_cpcl AS [Product Class], 
+       itemdes.t_citg AS [Item Group], 
+       itemdes.t_cpln AS [Product Line], 
+       infoitem.t_dsca AS [Product Line Desc.], 
+       ROUND(cost.t_ecpr_1, 2) AS [Standard Cost], 
+       cost.t_ccur AS [Std Cost Currency], 
+       ROUND(ISNULL(cost.t_ecpr_1 * 
+           (SELECT rate
+            FROM ExchangeRates
+            WHERE t_ccur = cost.t_ccur AND rn = 1), cost.t_ecpr_1), 4) AS [Std Cost USD PEG], 
+       itemdes.t_cuni AS [Inventory Unit], 
+       item.t_qhnd AS [On Hand Q-ty with customer], 
+       item.t_qnhd AS [Customer Owned QTY], 
+       item.t_qhnd - item.t_qnhd AS [On Hand QTY], 
+       ROUND((item.t_qhnd - item.t_qnhd) * 
+           ROUND(ISNULL(cost.t_ecpr_1 * 
+               (SELECT rate
+                FROM ExchangeRates
+                WHERE t_ccur = cost.t_ccur AND rn = 1), cost.t_ecpr_1), 4), 4) AS [Stock Value in Std Cost USD PEG], 
+       ISNULL(PlannedDemand.Demand, 0) AS [Planned Demand], 
+       CONVERT(VARCHAR(10), LastConsumptionDate.LastConsumptionDate, 120) AS [Last consumption date], 
+       CONVERT(VARCHAR(10), LastSalesDate.LastSalesDate, 120) AS [Last sales date], 
+       CONVERT(VARCHAR(10), LastReceiptDate.LastReceiptDate, 120) AS [Last receipt date], 
+       CONVERT(VARCHAR(10), item.t_ltdt, 120) AS [Last Movement Date ANY], 
+       wmd.t_sfst AS [Safety Stock]
+FROM erplndb.dbo.0 AS item 
+INNER JOIN erplndb.dbo.1 AS company ON item.t_cwar = company.t_cwar 
+INNER JOIN erplndb.dbo.2 AS person ON person.t_emno = company.t_cdf_wrpr 
+INNER JOIN erplndb.dbo.3 AS itemdes ON item.t_item = itemdes.t_item 
+LEFT JOIN erplndb.dbo.4 AS infoitem ON infoitem.t_cpln = itemdes.t_cpln 
+LEFT JOIN erplndb.dbo.5 AS infonow ON itemdes.t_csig = infonow.t_csig 
+LEFT JOIN erplndb.dbo.6 AS cost ON cost.t_eunt = CASE WHEN company.t_comp = '1510' THEN '1511' ELSE company.t_comp END 
+    AND item.t_item = cost.t_item 
+LEFT JOIN PlannedDemand ON PlannedDemand.t_cwar = item.t_cwar AND PlannedDemand.ItemID = LTRIM(item.t_item) 
+LEFT JOIN LastConsumptionDate ON LastConsumptionDate.t_item = item.t_item AND LastConsumptionDate.t_cwar = item.t_cwar 
+LEFT JOIN LastSalesDate ON LastSalesDate.t_item = item.t_item AND LastSalesDate.t_cwar = item.t_cwar 
+LEFT JOIN LastReceiptDate ON LastReceiptDate.t_item = item.t_item AND LastReceiptDate.t_cwar = item.t_cwar 
+LEFT JOIN erplndb.dbo.7 AS wmd ON wmd.t_item = item.t_item AND wmd.t_cwar = item.t_cwar
+WHERE item.t_qhnd > 0;
