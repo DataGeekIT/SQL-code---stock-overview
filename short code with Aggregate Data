@@ -1,0 +1,53 @@
+WITH AggregatedData AS (
+    SELECT
+        company.t_comp AS [Enterprise Unit],
+        LTRIM(item.t_item) AS ItemID,
+        LTRIM(itemdes.t_dsca) AS [Item Description],
+        ROUND(cost.t_ecpr_1, 2) AS [Standard Cost],
+        cost.t_ccur AS [Std Cost Currency],
+        ROUND(
+            ISNULL(
+                cost.t_ecpr_1 * (
+                    SELECT TOP (1) 
+                        CASE 
+                            WHEN erplndb.dbo.ttcmcs0081000.t_rate < 1 THEN erplndb.dbo.ttcmcs0081000.t_rate / erplndb.dbo.ttcmcs0081000.t_ratf 
+                            ELSE erplndb.dbo.ttcmcs0081000.t_rate * erplndb.dbo.ttcmcs0081000.t_ratf 
+                        END AS Expr1
+                    FROM erplndb.dbo.ttcmcs0081000
+                    WHERE (t_bcur = 'USD') AND (t_ccur = cost.t_ccur) AND (t_rtyp = 'PEG')
+                    ORDER BY t_stdt DESC
+                ), cost.t_ecpr_1
+            ), 4
+        ) AS [Std Cost USD],
+        itemdes.t_cuni AS [Inventory Unit],
+        item.t_qhnd - item.t_qnhd AS [On Hand Q-ty]
+    FROM 
+        erplndb.dbo.twhwmd2151000 AS item 
+        INNER JOIN erplndb.dbo.ttcmcs0031000 AS company ON item.t_cwar = company.t_cwar 
+        INNER JOIN erplndb.dbo.ttcibd0011000 AS itemdes ON item.t_item = itemdes.t_item 
+        LEFT OUTER JOIN erplndb.dbo.tticpr0071000 AS cost ON cost.t_eunt = CASE WHEN company.t_comp = '1510' THEN '1511' ELSE company.t_comp END AND item.t_item = cost.t_item
+    WHERE 
+        (CAST(item.t_qhnd AS INT) > 0) AND (company.t_comp = '1010') AND company.t_typw <> '13'
+)
+SELECT 
+    [Enterprise Unit],
+    ItemID,
+    [Item Description],
+    [Standard Cost],
+    [Std Cost Currency],
+    [Std Cost USD],
+    [Inventory Unit],
+    SUM([On Hand Q-ty]) AS [Total On Hand Q-ty]
+FROM 
+    AggregatedData
+GROUP BY
+    [Enterprise Unit],
+    ItemID,
+    [Item Description],
+    [Standard Cost],
+    [Std Cost Currency],
+    [Std Cost USD],
+    [Inventory Unit];
+
+
+ 
